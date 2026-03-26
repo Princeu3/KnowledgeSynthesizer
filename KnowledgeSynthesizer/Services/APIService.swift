@@ -73,7 +73,9 @@ actor APIService {
 
         let (data, response) = try await session.data(from: url)
         try validateResponse(response)
-        return try JSONDecoder().decode(T.self, from: data)
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        return try decoder.decode(T.self, from: data)
     }
 
     private func post<T: Codable>(endpoint: String, body: [String: Any]) async throws -> T {
@@ -88,7 +90,9 @@ actor APIService {
 
         let (data, response) = try await session.data(for: request)
         try validateResponse(response)
-        return try JSONDecoder().decode(T.self, from: data)
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        return try decoder.decode(T.self, from: data)
     }
 
     private func validateResponse(_ response: URLResponse) throws {
