@@ -9,7 +9,7 @@ actor APIService {
 
     private let session: URLSession
 
-    init(baseURL: String = "http://localhost:8000") {
+    init(baseURL: String = "https://knowledge-synthesizer-production.up.railway.app") {
         self.baseURL = baseURL
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = 60

@@ -47,7 +47,7 @@ struct SettingsView: View {
                                 .foregroundStyle(backendStatus == "Connected" ? .green : .red)
                         }
                     }
-                    LabeledContent("URL", value: "localhost:8000")
+                    LabeledContent("URL", value: "Railway (production)")
                 }
 
                 Section("About") {
