@@ -8,7 +8,8 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.9"
-    DEVELOPMENT_TEAM: ""
+    DEVELOPMENT_TEAM: RMVX38Q6NU
+    CODE_SIGN_STYLE: Automatic
 
 targets:
   KnowledgeSynthesizer:
