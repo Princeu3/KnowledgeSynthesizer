@@ -1,0 +1,28 @@
+# Python
+Backend/.venv/
+Backend/__pycache__/
+Backend/**/__pycache__/
+Backend/.env
+*.pyc
+
+# Xcode
+xcuserdata/
+*.xcuserdata
+*.xcworkspace
+DerivedData/
+xcshareddata/
+build/
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# macOS
+.DS_Store
+
+# IDE
+.idea/
+.vscode/
+
+# Secrets
+*.env
+!.env.example
