@@ -3,81 +3,79 @@ import UniformTypeIdentifiers
 
 class ShareViewController: UIViewController {
 
+    private var hasProcessed = false
+
     override func viewDidLoad() {
         super.viewDidLoad()
-        handleSharedContent()
+        // Transparent — no UI shown, but view must go through full lifecycle
+        view.backgroundColor = .clear
     }
 
-    private func handleSharedContent() {
-        guard let extensionItems = extensionContext?.inputItems as? [NSExtensionItem] else {
-            close()
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+
+        // Guard against multiple calls
+        guard !hasProcessed else { return }
+        hasProcessed = true
+
+        // Capture extensionContext strongly before entering Task
+        guard let extensionContext = self.extensionContext else { return }
+
+        Task { @MainActor in
+            do {
+                try await self.processAndSave(extensionContext: extensionContext)
+                extensionContext.completeRequest(returningItems: nil, completionHandler: nil)
+            } catch {
+                extensionContext.cancelRequest(withError: error)
+            }
+        }
+    }
+
+    private func processAndSave(extensionContext: NSExtensionContext) async throws {
+        guard let extensionItems = extensionContext.inputItems as? [NSExtensionItem] else {
             return
         }
 
-        Task { @MainActor in
-            var url: String?
-            var text: String?
-            var title: String?
+        var url: String?
+        var text: String?
+        var title: String?
 
-            for item in extensionItems {
-                if let attrTitle = item.attributedTitle?.string {
-                    title = attrTitle
+        for item in extensionItems {
+            if let attrTitle = item.attributedTitle?.string {
+                title = attrTitle
+            }
+
+            guard let attachments = item.attachments else { continue }
+
+            for attachment in attachments {
+                // Handle URLs
+                if attachment.hasItemConformingToTypeIdentifier(UTType.url.identifier) {
+                    let data = try await attachment.loadItem(forTypeIdentifier: UTType.url.identifier)
+                    if let sharedURL = data as? URL {
+                        url = sharedURL.absoluteString
+                    } else if let urlString = data as? String {
+                        url = urlString
+                    }
                 }
 
-                guard let attachments = item.attachments else { continue }
-
-                for attachment in attachments {
-                    // Handle URLs
-                    if attachment.hasItemConformingToTypeIdentifier(UTType.url.identifier) {
-                        do {
-                            let data = try await attachment.loadItem(forTypeIdentifier: UTType.url.identifier)
-                            if let sharedURL = data as? URL {
-                                url = sharedURL.absoluteString
-                            } else if let urlString = data as? String {
-                                url = urlString
-                            }
-                        } catch {
-                            print("Failed to load URL: \(error)")
-                        }
-                    }
-
-                    // Handle plain text
-                    if url == nil, attachment.hasItemConformingToTypeIdentifier(UTType.plainText.identifier) {
-                        do {
-                            let data = try await attachment.loadItem(forTypeIdentifier: UTType.plainText.identifier)
-                            if let sharedText = data as? String {
-                                if sharedText.hasPrefix("http://") || sharedText.hasPrefix("https://") {
-                                    url = sharedText
-                                } else {
-                                    text = sharedText
-                                }
-                            }
-                        } catch {
-                            print("Failed to load text: \(error)")
+                // Handle plain text (only if we don't have a URL yet)
+                if url == nil, attachment.hasItemConformingToTypeIdentifier(UTType.plainText.identifier) {
+                    let data = try await attachment.loadItem(forTypeIdentifier: UTType.plainText.identifier)
+                    if let sharedText = data as? String {
+                        if sharedText.hasPrefix("http://") || sharedText.hasPrefix("https://") {
+                            url = sharedText
+                        } else {
+                            text = sharedText
                         }
                     }
                 }
             }
-
-            // Save to shared container
-            if url != nil || text != nil {
-                let pendingItem = PendingShareItem(
-                    url: url,
-                    text: text,
-                    title: title
-                )
-                do {
-                    try AppGroupManager.writePendingItem(pendingItem)
-                } catch {
-                    print("Failed to save shared item: \(error)")
-                }
-            }
-
-            close()
         }
-    }
 
-    private func close() {
-        extensionContext?.completeRequest(returningItems: nil)
+        // Only save if we got something
+        guard url != nil || text != nil else { return }
+
+        let pendingItem = PendingShareItem(url: url, text: text, title: title)
+        try AppGroupManager.writePendingItem(pendingItem)
     }
 }
