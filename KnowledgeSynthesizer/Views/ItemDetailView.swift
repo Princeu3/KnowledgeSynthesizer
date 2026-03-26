@@ -6,19 +6,17 @@ struct ItemDetailView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                // Header
                 headerSection
-
                 Divider()
 
-                // Content
-                if !item.content.isEmpty {
-                    contentSection
+                // Summary bullets (primary content)
+                if let analysis = item.visionAnalysis, !analysis.isEmpty {
+                    summarySection(analysis)
                 }
 
-                // Vision Analysis
-                if let analysis = item.visionAnalysis, !analysis.isEmpty {
-                    visionAnalysisSection(analysis)
+                // Full content (transcript, caption) - collapsible
+                if !item.content.isEmpty {
+                    contentSection
                 }
 
                 // Topics & Entities
@@ -40,7 +38,7 @@ struct ItemDetailView: View {
             }
             .padding()
         }
-        .navigationTitle(item.title.isEmpty ? "Detail" : item.title)
+        .navigationTitle("Detail")
         .navigationBarTitleDisplayMode(.inline)
     }
 
@@ -56,9 +54,7 @@ struct ItemDetailView: View {
                     Rectangle()
                         .fill(.quaternary)
                         .aspectRatio(16/9, contentMode: .fit)
-                        .overlay {
-                            ProgressView()
-                        }
+                        .overlay { ProgressView() }
                 }
                 .clipShape(RoundedRectangle(cornerRadius: 12))
             }
@@ -66,7 +62,7 @@ struct ItemDetailView: View {
             // Title
             if !item.title.isEmpty {
                 Text(item.title)
-                    .font(.title2)
+                    .font(.title3)
                     .fontWeight(.bold)
             }
 
@@ -87,52 +83,70 @@ struct ItemDetailView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-
-            // Processing status
-            if !item.isEnriched && item.processingStatus != "pending" {
-                Label(item.processingStatus.capitalized, systemImage: "arrow.triangle.2.circlepath")
-                    .font(.caption)
-                    .foregroundStyle(.orange)
-            }
         }
     }
+
+    private func summarySection(_ analysis: String) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label("Key Takeaways", systemImage: "sparkles")
+                .font(.headline)
+
+            let bullets = analysis.split(separator: "\n").map(String.init)
+            VStack(alignment: .leading, spacing: 6) {
+                ForEach(bullets, id: \.self) { bullet in
+                    let cleaned = bullet.hasPrefix("• ") ? String(bullet.dropFirst(2)) : bullet
+                    HStack(alignment: .top, spacing: 8) {
+                        Circle()
+                            .fill(.blue)
+                            .frame(width: 6, height: 6)
+                            .padding(.top, 6)
+                        Text(cleaned)
+                            .font(.body)
+                    }
+                }
+            }
+            .padding()
+            .background(.blue.opacity(0.05))
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+        }
+    }
+
+    @State private var showFullContent = false
 
     private var contentSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Content")
-                .font(.headline)
-
-            Text(item.content)
-                .font(.body)
-                .foregroundStyle(.primary)
-                .textSelection(.enabled)
-        }
-    }
-
-    private func visionAnalysisSection(_ analysis: String) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Label("AI Visual Analysis", systemImage: "sparkles")
-                .font(.headline)
-                .foregroundStyle(.yellow)
-
-            Text(analysis)
-                .font(.body)
+            Button {
+                withAnimation { showFullContent.toggle() }
+            } label: {
+                HStack {
+                    Label(showFullContent ? "Hide Details" : "Show Full Content", systemImage: showFullContent ? "chevron.up" : "chevron.down")
+                        .font(.subheadline)
+                        .fontWeight(.medium)
+                    Spacer()
+                }
                 .foregroundStyle(.secondary)
-                .textSelection(.enabled)
-                .padding()
-                .background(.ultraThinMaterial)
-                .clipShape(RoundedRectangle(cornerRadius: 8))
+            }
+
+            if showFullContent {
+                Text(item.content)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+                    .padding()
+                    .background(.ultraThinMaterial)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+            }
         }
     }
 
     private var tagsSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            if !item.topics.isEmpty {
-                Text("Topics")
+            if !item.entities.isEmpty {
+                Text("Mentioned")
                     .font(.headline)
                 FlowLayout(spacing: 6) {
-                    ForEach(item.topics, id: \.self) { topic in
-                        Text(topic)
+                    ForEach(item.entities, id: \.self) { entity in
+                        Text(entity)
                             .font(.caption)
                             .padding(.horizontal, 8)
                             .padding(.vertical, 4)
@@ -143,33 +157,17 @@ struct ItemDetailView: View {
                 }
             }
 
-            if !item.entities.isEmpty {
-                Text("Entities")
+            if !item.topics.isEmpty {
+                Text("Topics")
                     .font(.headline)
                 FlowLayout(spacing: 6) {
-                    ForEach(item.entities, id: \.self) { entity in
-                        Text(entity)
+                    ForEach(item.topics, id: \.self) { topic in
+                        Text(topic)
                             .font(.caption)
                             .padding(.horizontal, 8)
                             .padding(.vertical, 4)
-                            .background(.green.opacity(0.1))
-                            .foregroundStyle(.green)
-                            .clipShape(Capsule())
-                    }
-                }
-            }
-
-            if !item.tags.isEmpty {
-                Text("Tags")
-                    .font(.headline)
-                FlowLayout(spacing: 6) {
-                    ForEach(item.tags, id: \.self) { tag in
-                        Text("#\(tag)")
-                            .font(.caption)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(.purple.opacity(0.1))
-                            .foregroundStyle(.purple)
+                            .background(.gray.opacity(0.1))
+                            .foregroundStyle(.secondary)
                             .clipShape(Capsule())
                     }
                 }
@@ -179,19 +177,15 @@ struct ItemDetailView: View {
 
     private var metadataSection: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text("Details")
-                .font(.headline)
-
             if let category = item.category {
                 LabeledContent("Category", value: category)
             }
             if let contentDate = item.contentDate {
-                LabeledContent("Content Date", value: contentDate.formatted(date: .abbreviated, time: .omitted))
+                LabeledContent("Posted", value: contentDate.formatted(date: .abbreviated, time: .omitted))
             }
-            LabeledContent("Ingested", value: item.ingestedAt.formatted(date: .abbreviated, time: .shortened))
-            LabeledContent("Status", value: item.processingStatus.capitalized)
         }
-        .font(.subheadline)
+        .font(.caption)
+        .foregroundStyle(.tertiary)
     }
 }
 
@@ -200,8 +194,7 @@ struct FlowLayout: Layout {
     var spacing: CGFloat = 8
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        let result = layout(proposal: proposal, subviews: subviews)
-        return result.size
+        layout(proposal: proposal, subviews: subviews).size
     }
 
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {

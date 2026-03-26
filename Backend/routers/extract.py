@@ -42,38 +42,50 @@ async def extract_instagram(
         # Step 1: Fetch metadata from Instagram Graph API (Business Discovery)
         data = await instagram.extract_from_url(request.url)
 
-        # Step 2: If we got a media_url (video), analyze with Vision AI
-        vision_analysis = None
-        vision_topics: list[str] = []
-        vision_entities: list[str] = []
-
+        # Step 2: If we got a media_url (video), analyze with Gemini
+        analysis = {}
         media_url = data.get("media_url")
-        transcript = ""
         if media_url:
             try:
                 analysis = await vision.analyze_video_url(media_url)
-                vision_analysis = _format_vision_analysis(analysis)
-                vision_topics = analysis.get("topics", [])
-                vision_entities = analysis.get("entities", [])
-                transcript = analysis.get("transcript", "")
             except Exception as e:
                 logger.warning(f"Vision analysis failed, continuing without: {e}")
 
-        # Merge topics and entities from Instagram metadata + vision
-        all_topics = list(set(data.get("topics", []) + vision_topics))
-        all_entities = list(set(data.get("entities", []) + vision_entities))
+        # Use AI-generated title if available, fall back to caption
+        title = analysis.get("title") or data.get("title", "")
 
-        # Build rich content: caption + transcript
+        # Build clean content: summary bullets as primary content
+        summary_bullets = analysis.get("summary", [])
+        transcript = analysis.get("transcript", "")
         caption = data.get("content", "")
+
         content_parts = []
+        if summary_bullets:
+            content_parts.append("\n".join(f"• {b}" for b in summary_bullets))
         if caption:
-            content_parts.append(caption)
+            content_parts.append(f"\nCaption: {caption}")
         if transcript:
-            content_parts.append(f"\n---\nTranscript:\n{transcript}")
-        full_content = "\n".join(content_parts) if content_parts else ""
+            content_parts.append(f"\nTranscript: {transcript}")
+
+        full_content = "\n".join(content_parts) if content_parts else caption
+
+        # Build vision_analysis as a readable summary
+        vision_analysis = "\n".join(f"• {b}" for b in summary_bullets) if summary_bullets else None
+
+        # Merge topics and entities
+        all_topics = list(set(data.get("topics", []) + analysis.get("topics", [])))
+        all_entities = list(set(data.get("entities", []) + analysis.get("entities", [])))
+
+        # Add resources to metadata
+        metadata = data.get("metadata", {})
+        resources = analysis.get("resources", [])
+        if resources:
+            metadata["resources"] = ", ".join(resources)
+        if analysis.get("mood"):
+            metadata["mood"] = analysis["mood"]
 
         return ExtractionResponse(
-            title=data.get("title", ""),
+            title=title,
             content=full_content,
             thumbnail_url=data.get("thumbnail_url"),
             vision_analysis=vision_analysis,
@@ -81,7 +93,7 @@ async def extract_instagram(
             entities=all_entities,
             category="instagram",
             content_date=data.get("content_date"),
-            metadata=data.get("metadata"),
+            metadata=metadata,
         )
 
     except TokenExpiredError:
@@ -91,7 +103,6 @@ async def extract_instagram(
         )
     except Exception as e:
         logger.error(f"Instagram extraction failed: {e}")
-        # Return a minimal response with just the URL
         return ExtractionResponse(
             title=f"Instagram: {request.url}",
             content=f"Shared from Instagram: {request.url}",
@@ -99,19 +110,3 @@ async def extract_instagram(
             entities=[],
             metadata={"source_url": request.url, "error": str(e)},
         )
-
-
-def _format_vision_analysis(analysis: dict) -> str:
-    """Format vision analysis dict into readable text."""
-    parts: list[str] = []
-
-    if desc := analysis.get("description"):
-        parts.append(f"Visual: {desc}")
-    if text := analysis.get("on_screen_text"):
-        parts.append(f"On-screen text: {text}")
-    if takeaway := analysis.get("educational_takeaway"):
-        parts.append(f"Key takeaway: {takeaway}")
-    if mood := analysis.get("mood"):
-        parts.append(f"Mood: {mood}")
-
-    return "\n".join(parts) if parts else ""
