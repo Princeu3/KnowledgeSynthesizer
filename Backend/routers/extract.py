@@ -48,12 +48,14 @@ async def extract_instagram(
         vision_entities: list[str] = []
 
         media_url = data.get("media_url")
+        transcript = ""
         if media_url:
             try:
                 analysis = await vision.analyze_video_url(media_url)
                 vision_analysis = _format_vision_analysis(analysis)
                 vision_topics = analysis.get("topics", [])
                 vision_entities = analysis.get("entities", [])
+                transcript = analysis.get("transcript", "")
             except Exception as e:
                 logger.warning(f"Vision analysis failed, continuing without: {e}")
 
@@ -61,9 +63,18 @@ async def extract_instagram(
         all_topics = list(set(data.get("topics", []) + vision_topics))
         all_entities = list(set(data.get("entities", []) + vision_entities))
 
+        # Build rich content: caption + transcript
+        caption = data.get("content", "")
+        content_parts = []
+        if caption:
+            content_parts.append(caption)
+        if transcript:
+            content_parts.append(f"\n---\nTranscript:\n{transcript}")
+        full_content = "\n".join(content_parts) if content_parts else ""
+
         return ExtractionResponse(
             title=data.get("title", ""),
-            content=data.get("content", ""),
+            content=full_content,
             thumbnail_url=data.get("thumbnail_url"),
             vision_analysis=vision_analysis,
             topics=all_topics,
