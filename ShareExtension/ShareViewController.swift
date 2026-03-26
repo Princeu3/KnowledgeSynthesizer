@@ -1,5 +1,4 @@
 import UIKit
-import Social
 import UniformTypeIdentifiers
 
 class ShareViewController: UIViewController {
@@ -15,13 +14,12 @@ class ShareViewController: UIViewController {
             return
         }
 
-        Task {
+        Task { @MainActor in
             var url: String?
             var text: String?
             var title: String?
 
             for item in extensionItems {
-                // Try to get the attributed title
                 if let attrTitle = item.attributedTitle?.string {
                     title = attrTitle
                 }
@@ -31,42 +29,48 @@ class ShareViewController: UIViewController {
                 for attachment in attachments {
                     // Handle URLs
                     if attachment.hasItemConformingToTypeIdentifier(UTType.url.identifier) {
-                        if let data = try? await attachment.loadItem(forTypeIdentifier: UTType.url.identifier) {
+                        do {
+                            let data = try await attachment.loadItem(forTypeIdentifier: UTType.url.identifier)
                             if let sharedURL = data as? URL {
                                 url = sharedURL.absoluteString
                             } else if let urlString = data as? String {
                                 url = urlString
                             }
+                        } catch {
+                            print("Failed to load URL: \(error)")
                         }
                     }
 
                     // Handle plain text
-                    if attachment.hasItemConformingToTypeIdentifier(UTType.plainText.identifier) {
-                        if let data = try? await attachment.loadItem(forTypeIdentifier: UTType.plainText.identifier) {
+                    if url == nil, attachment.hasItemConformingToTypeIdentifier(UTType.plainText.identifier) {
+                        do {
+                            let data = try await attachment.loadItem(forTypeIdentifier: UTType.plainText.identifier)
                             if let sharedText = data as? String {
-                                // If it looks like a URL, treat it as one
                                 if sharedText.hasPrefix("http://") || sharedText.hasPrefix("https://") {
-                                    url = url ?? sharedText
+                                    url = sharedText
                                 } else {
                                     text = sharedText
                                 }
                             }
+                        } catch {
+                            print("Failed to load text: \(error)")
                         }
                     }
                 }
             }
 
             // Save to shared container
-            let pendingItem = PendingShareItem(
-                url: url,
-                text: text,
-                title: title
-            )
-
-            do {
-                try AppGroupManager.writePendingItem(pendingItem)
-            } catch {
-                print("Failed to save shared item: \(error)")
+            if url != nil || text != nil {
+                let pendingItem = PendingShareItem(
+                    url: url,
+                    text: text,
+                    title: title
+                )
+                do {
+                    try AppGroupManager.writePendingItem(pendingItem)
+                } catch {
+                    print("Failed to save shared item: \(error)")
+                }
             }
 
             close()
