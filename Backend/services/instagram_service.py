@@ -228,12 +228,14 @@ class InstagramService:
             resp = await self.client.get(
                 url,
                 headers={
-                    "User-Agent": "Mozilla/5.0 (compatible; KnowledgeSynthesizer/1.0)"
+                    "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
+                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                    "Accept-Language": "en-US,en;q=0.9",
                 },
                 follow_redirects=True,
             )
             if resp.status_code == 200:
-                # Instagram HTML contains links like instagram.com/USERNAME/reel/CODE
+                # Try username from URL pattern in HTML
                 match = re.search(
                     r"instagram\.com/([a-zA-Z0-9_.]+)/(?:reel|p)/", resp.text
                 )
@@ -241,6 +243,10 @@ class InstagramService:
                     username = match.group(1)
                     if username not in ("reel", "p", "stories", "explore"):
                         return username
+                # Fallback: try JSON embedded in page
+                match2 = re.search(r'"username":"([^"]+)"', resp.text)
+                if match2:
+                    return match2.group(1)
         except Exception as e:
             logger.warning(f"Username resolution failed: {e}")
         return None
