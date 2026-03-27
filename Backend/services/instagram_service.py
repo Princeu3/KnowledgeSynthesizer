@@ -177,12 +177,12 @@ class InstagramService:
 
         # Search up to 4 pages (200 items) for the specific reel
         matching = await self._search_media_paginated(
-            username, url, max_pages=4
+            username, url, max_pages=10
         )
         if not matching:
             raise ExtractionFailedError(
                 f"Reel not found in @{username}'s recent posts "
-                f"(searched 200 items). Shortcode: {shortcode}"
+                f"(searched 500 items). Shortcode: {shortcode}"
             )
 
         result: dict[str, Any] = {
