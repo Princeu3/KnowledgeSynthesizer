@@ -29,6 +29,11 @@ class TokenExpiredError(Exception):
     pass
 
 
+class ExtractionFailedError(Exception):
+    """Raised when content extraction fails and should be shown as failed."""
+    pass
+
+
 class InstagramService:
     """Instagram Graph API client for knowledge extraction."""
 
@@ -160,59 +165,45 @@ class InstagramService:
             username = await self._resolve_username_from_oembed(url)
             logger.info(f"Resolved username from oEmbed: {username}")
 
+        if not username:
+            raise ExtractionFailedError(
+                f"Could not resolve Instagram username from URL: {url}"
+            )
+
+        if not self.own_ig_user_id:
+            raise ExtractionFailedError("Instagram user ID not configured")
+
+        profile = await self._fetch_profile(username)
+
+        # Search up to 4 pages (200 items) for the specific reel
+        matching = await self._search_media_paginated(
+            username, url, max_pages=4
+        )
+        if not matching:
+            raise ExtractionFailedError(
+                f"Reel not found in @{username}'s recent posts "
+                f"(searched 200 items). Shortcode: {shortcode}"
+            )
+
         result: dict[str, Any] = {
-            "title": "",
-            "content": "",
-            "thumbnail_url": None,
-            "media_url": None,
+            "title": (matching.get("caption") or "")[:80],
+            "content": matching.get("caption") or "",
+            "thumbnail_url": matching.get("thumbnail_url"),
+            "media_url": matching.get("media_url"),
             "topics": [],
             "entities": [],
-            "content_date": None,
-            "metadata": {"source_url": url, "platform": "instagram"},
+            "content_date": matching.get("timestamp"),
+            "metadata": {
+                "source_url": url,
+                "platform": "instagram",
+                "media_type": matching.get("media_type", ""),
+                "like_count": str(matching.get("like_count", 0)),
+                "comments_count": str(matching.get("comments_count", 0)),
+                "permalink": matching.get("permalink", url),
+                "username": username,
+                "followers": str(profile.get("followers_count", 0)),
+            },
         }
-
-        # Try Business Discovery if we have own IG user ID and a username
-        if self.own_ig_user_id and username:
-            try:
-                profile = await self._fetch_profile(username)
-                media_items = await self._fetch_user_media(username)
-
-                # Find the specific reel if possible
-                matching = self._find_matching_media(media_items, url)
-                if matching:
-                    result["title"] = (matching.get("caption") or "")[:80]
-                    result["content"] = matching.get("caption") or ""
-                    result["thumbnail_url"] = matching.get("thumbnail_url")
-                    result["media_url"] = matching.get("media_url")
-                    result["content_date"] = matching.get("timestamp")
-                    result["metadata"].update(
-                        {
-                            "media_type": matching.get("media_type", ""),
-                            "like_count": str(matching.get("like_count", 0)),
-                            "comments_count": str(
-                                matching.get("comments_count", 0)
-                            ),
-                            "permalink": matching.get("permalink", url),
-                            "username": username,
-                            "followers": str(
-                                profile.get("followers_count", 0)
-                            ),
-                        }
-                    )
-                else:
-                    # Couldn't find specific media, store profile info
-                    result["title"] = f"Instagram post by @{username}"
-                    result["metadata"]["username"] = username
-
-            except (TokenExpiredError, RateLimitExceeded):
-                logger.warning("Token/rate issue, storing URL only")
-            except Exception as e:
-                logger.warning(f"Graph API fetch failed: {e}")
-
-        # If we still have no content, use URL as fallback
-        if not result["content"]:
-            result["title"] = f"Instagram: {url}"
-            result["content"] = f"Shared from Instagram: {url}"
 
         return result
 
@@ -260,35 +251,60 @@ class InstagramService:
         data = await self._make_request(self.own_ig_user_id, params)
         return data.get("business_discovery", {})
 
-    async def _fetch_user_media(
-        self, username: str, limit: int = 50
-    ) -> list[dict[str, Any]]:
-        fields = (
-            "id,caption,media_type,media_url,thumbnail_url,"
-            "permalink,timestamp,like_count,comments_count"
-        )
-        params = {
-            "fields": f"business_discovery.username({username})"
-            f"{{media.limit({limit}){{{fields}}}}}"
-        }
-        data = await self._make_request(self.own_ig_user_id, params)
-        media_data = (
-            data.get("business_discovery", {}).get("media", {}).get("data", [])
-        )
-        return media_data
-
-    def _find_matching_media(
-        self, media_items: list[dict], url: str
+    async def _search_media_paginated(
+        self, username: str, url: str, max_pages: int = 4
     ) -> dict[str, Any] | None:
-        """Find media item matching the shared URL by shortcode."""
+        """Search through paginated media to find a specific post by shortcode.
+
+        Searches up to max_pages * 50 items, stopping early when found.
+        """
         shortcode = self._extract_shortcode(url)
         if not shortcode:
             return None
 
-        for item in media_items:
-            permalink = item.get("permalink", "")
-            if shortcode in permalink:
-                return item
+        fields = (
+            "id,caption,media_type,media_url,thumbnail_url,"
+            "permalink,timestamp,like_count,comments_count"
+        )
+        after_cursor: str | None = None
+
+        for page in range(max_pages):
+            media_part = f"media.limit(50){{{fields}}}"
+            if after_cursor:
+                media_part = f"media.after({after_cursor}).limit(50){{{fields}}}"
+
+            params = {
+                "fields": f"business_discovery.username({username})"
+                f"{{{media_part}}}"
+            }
+            data = await self._make_request(self.own_ig_user_id, params)
+            media_obj = (
+                data.get("business_discovery", {}).get("media", {})
+            )
+            items = media_obj.get("data", [])
+
+            # Search this page for the matching shortcode
+            for item in items:
+                if shortcode in item.get("permalink", ""):
+                    logger.info(
+                        f"Found matching media on page {page + 1}"
+                    )
+                    return item
+
+            # Get next page cursor
+            after_cursor = (
+                media_obj.get("paging", {})
+                .get("cursors", {})
+                .get("after")
+            )
+            if not after_cursor or not items:
+                break
+
+            logger.info(
+                f"Media not found on page {page + 1}, "
+                f"fetching next page..."
+            )
+
         return None
 
     @staticmethod

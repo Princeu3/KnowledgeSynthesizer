@@ -7,6 +7,7 @@ final class EnrichmentService {
     static let shared = EnrichmentService()
 
     private var isProcessing = false
+    private static let isoFormatter = ISO8601DateFormatter()
 
     /// Enrich a single item by calling the backend
     func enrich(_ item: KnowledgeItem, in context: ModelContext) {
@@ -22,6 +23,12 @@ final class EnrichmentService {
             do {
                 let result = try await APIService.shared.extractInstagram(url: url)
 
+                // Validate response — don't mark as enriched if backend returned garbage
+                let titleIsURL = result.title.hasPrefix("http") || result.title.hasPrefix("Instagram: http")
+                let hasRealContent = result.visionAnalysis != nil
+                    || !result.topics.isEmpty
+                    || (!result.content.isEmpty && !result.content.contains("Shared from Instagram:"))
+
                 item.title = result.title
                 item.content = result.content
                 item.thumbnailURL = result.thumbnailURL
@@ -29,9 +36,15 @@ final class EnrichmentService {
                 item.topics = result.topics
                 item.entities = result.entities
                 item.category = result.category
-                item.contentDate = result.contentDate.flatMap { ISO8601DateFormatter().date(from: $0) }
-                item.processingStatus = "enriched"
-                item.isEnriched = true
+                item.contentDate = result.contentDate.flatMap { Self.isoFormatter.date(from: $0) }
+
+                if titleIsURL && !hasRealContent {
+                    item.processingStatus = "failed"
+                    item.isEnriched = false
+                } else {
+                    item.processingStatus = "enriched"
+                    item.isEnriched = true
+                }
 
                 if let meta = result.metadata {
                     let data = try JSONSerialization.data(withJSONObject: meta)

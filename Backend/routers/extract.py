@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from config import Settings, get_settings
 from models.schemas import ExtractionRequest, ExtractionResponse
-from services.instagram_service import InstagramService, TokenExpiredError
+from services.instagram_service import InstagramService, TokenExpiredError, ExtractionFailedError
 from services.vision_service import VisionService
 
 logger = logging.getLogger(__name__)
@@ -101,12 +101,12 @@ async def extract_instagram(
             status_code=401,
             detail="Instagram access token expired. Please reconnect.",
         )
+    except ExtractionFailedError as e:
+        logger.warning(f"Extraction failed: {e}")
+        raise HTTPException(status_code=422, detail=str(e))
     except Exception as e:
         logger.error(f"Instagram extraction failed: {e}")
-        return ExtractionResponse(
-            title=f"Instagram: {request.url}",
-            content=f"Shared from Instagram: {request.url}",
-            topics=[],
-            entities=[],
-            metadata={"source_url": request.url, "error": str(e)},
+        raise HTTPException(
+            status_code=500,
+            detail=f"Extraction error: {e}",
         )

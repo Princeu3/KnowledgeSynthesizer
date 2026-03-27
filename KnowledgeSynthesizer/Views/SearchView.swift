@@ -2,59 +2,54 @@ import SwiftUI
 import SwiftData
 
 struct SearchView: View {
-    @Environment(\.modelContext) private var modelContext
     @Query(sort: \KnowledgeItem.ingestedAt, order: .reverse) private var allItems: [KnowledgeItem]
     @State private var searchText = ""
+    @State private var debouncedQuery = ""
 
-    var searchResults: [KnowledgeItem] {
-        guard !searchText.isEmpty else { return [] }
-        let query = searchText.lowercased()
-        return allItems.filter { item in
-            item.searchableText.lowercased().contains(query)
-        }
+    private var searchResults: [KnowledgeItem] {
+        guard !debouncedQuery.isEmpty else { return [] }
+        let query = debouncedQuery.lowercased()
+        return allItems.filter { $0.searchableText.lowercased().contains(query) }
     }
 
     var body: some View {
         NavigationStack {
-            Group {
-                if searchText.isEmpty {
-                    searchPrompt
-                } else if searchResults.isEmpty {
-                    ContentUnavailableView.search(text: searchText)
-                } else {
-                    resultsList
-                }
-            }
-            .navigationTitle("Search")
-            .searchable(text: $searchText, prompt: "Search your knowledge...")
-        }
-    }
-
-    private var searchPrompt: some View {
-        VStack(spacing: 12) {
-            Image(systemName: "magnifyingglass")
-                .font(.system(size: 48))
-                .foregroundStyle(.tertiary)
-            Text("Search across all your saved knowledge")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-            Text("\(allItems.count) items indexed")
-                .font(.caption)
-                .foregroundStyle(.tertiary)
-        }
-    }
-
-    private var resultsList: some View {
-        List {
-            Section("\(searchResults.count) results") {
-                ForEach(searchResults) { item in
-                    NavigationLink(destination: ItemDetailView(item: item)) {
-                        KnowledgeItemRow(item: item)
+            List {
+                if !searchResults.isEmpty {
+                    Section("\(searchResults.count) results") {
+                        ForEach(searchResults) { item in
+                            NavigationLink(value: item.id) {
+                                FeedRow(item: item)
+                            }
+                        }
                     }
                 }
             }
+            .listStyle(.plain)
+            .navigationTitle("Search")
+            .navigationDestination(for: UUID.self) { id in
+                if let item = allItems.first(where: { $0.id == id }) {
+                    ItemDetailView(item: item)
+                }
+            }
+            .searchable(text: $searchText, prompt: "Search your knowledge...")
+            .task(id: searchText) {
+                try? await Task.sleep(for: .milliseconds(200))
+                guard !Task.isCancelled else { return }
+                debouncedQuery = searchText
+            }
+            .overlay {
+                if searchText.isEmpty {
+                    ContentUnavailableView(
+                        "Search Knowledge",
+                        systemImage: "magnifyingglass",
+                        description: Text("\(allItems.count) items indexed")
+                    )
+                } else if debouncedQuery == searchText && searchResults.isEmpty {
+                    ContentUnavailableView.search(text: searchText)
+                }
+            }
         }
-        .listStyle(.plain)
     }
 }
 

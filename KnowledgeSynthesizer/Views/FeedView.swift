@@ -6,63 +6,65 @@ struct FeedView: View {
     @Query(sort: \KnowledgeItem.ingestedAt, order: .reverse) private var items: [KnowledgeItem]
     @State private var selectedSourceFilter: SourceType?
 
-    var filteredItems: [KnowledgeItem] {
+    private var filteredItems: [KnowledgeItem] {
         guard let filter = selectedSourceFilter else { return items }
         return items.filter { $0.sourceType == filter }
     }
 
     var body: some View {
         NavigationStack {
-            Group {
-                if items.isEmpty {
-                    emptyState
-                } else {
-                    itemList
+            List {
+                ForEach(filteredItems) { item in
+                    NavigationLink(value: item.id) {
+                        FeedRow(item: item)
+                    }
                 }
+                .onDelete(perform: deleteItems)
             }
+            .listStyle(.plain)
             .navigationTitle("Knowledge")
-            .task {
-                // Import items shared via Share Extension
-                importShareExtensionItems()
-                // Enrich any pending items
-                EnrichmentService.shared.processPendingItems(in: modelContext)
-            }
-            .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
-                importShareExtensionItems()
-                EnrichmentService.shared.processPendingItems(in: modelContext)
+            .navigationDestination(for: UUID.self) { id in
+                if let item = items.first(where: { $0.id == id }) {
+                    ItemDetailView(item: item)
+                }
             }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     sourceFilterMenu
                 }
             }
-        }
-    }
-
-    private var emptyState: some View {
-        ContentUnavailableView(
-            "No Knowledge Yet",
-            systemImage: "brain.head.profile",
-            description: Text("Share links from any app or paste content to start building your knowledge base.")
-        )
-    }
-
-    private var itemList: some View {
-        List {
-            ForEach(filteredItems) { item in
-                NavigationLink(destination: ItemDetailView(item: item)) {
-                    KnowledgeItemRow(item: item)
+            .refreshable {
+                importShareExtensionItems()
+                EnrichmentService.shared.processPendingItems(in: modelContext)
+            }
+            .overlay {
+                if items.isEmpty {
+                    ContentUnavailableView(
+                        "No Knowledge Yet",
+                        systemImage: "brain.head.profile",
+                        description: Text("Share links from any app or paste content to start building your knowledge base.")
+                    )
                 }
             }
-            .onDelete(perform: deleteItems)
+            .task {
+                importShareExtensionItems()
+                EnrichmentService.shared.processPendingItems(in: modelContext)
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
+                importShareExtensionItems()
+                EnrichmentService.shared.processPendingItems(in: modelContext)
+            }
         }
-        .listStyle(.plain)
     }
+
+    // MARK: - Filter Menu
 
     private var sourceFilterMenu: some View {
         Menu {
-            Button("All Sources") {
+            Button {
                 selectedSourceFilter = nil
+            } label: {
+                Label("All Sources", systemImage: "square.grid.2x2")
             }
             Divider()
             ForEach(SourceType.allCases) { source in
@@ -73,13 +75,31 @@ struct FeedView: View {
                 }
             }
         } label: {
-            Image(systemName: selectedSourceFilter == nil ? "line.3.horizontal.decrease.circle" : "line.3.horizontal.decrease.circle.fill")
+            Image(systemName: selectedSourceFilter == nil
+                  ? "line.3.horizontal.decrease.circle"
+                  : "line.3.horizontal.decrease.circle.fill")
+        }
+    }
+
+    // MARK: - Actions
+
+    private func deleteItems(at offsets: IndexSet) {
+        let toDelete = offsets.map { filteredItems[$0] }
+        for item in toDelete {
+            modelContext.delete(item)
         }
     }
 
     private func importShareExtensionItems() {
-        do {
-            let pendingItems = try AppGroupManager.consumePendingItems()
+        Task {
+            let pendingItems: [PendingShareItem]
+            do {
+                pendingItems = try await Task.detached {
+                    try AppGroupManager.consumePendingItems()
+                }.value
+            } catch {
+                return
+            }
             for pending in pendingItems {
                 let item = KnowledgeItem(
                     sourceURL: pending.url,
@@ -90,110 +110,103 @@ struct FeedView: View {
                 modelContext.insert(item)
                 EnrichmentService.shared.enrich(item, in: modelContext)
             }
-        } catch {
-            print("Failed to import share extension items: \(error)")
-        }
-    }
-
-    private func deleteItems(at offsets: IndexSet) {
-        for index in offsets {
-            let item = filteredItems[index]
-            modelContext.delete(item)
         }
     }
 }
 
-struct KnowledgeItemRow: View {
+// MARK: - Feed Row
+
+struct FeedRow: View {
     let item: KnowledgeItem
 
+    /// Prioritize AI summary over raw content for preview
+    private var previewText: String {
+        if let analysis = item.visionAnalysis, !analysis.isEmpty {
+            let firstBullet = analysis.split(separator: "\n").first.map(String.init) ?? ""
+            return firstBullet.hasPrefix("• ") ? String(firstBullet.dropFirst(2)) : firstBullet
+        }
+        if !item.content.isEmpty {
+            return item.content
+        }
+        if let url = item.sourceURL {
+            return url
+        }
+        return ""
+    }
+
     var body: some View {
-        HStack(spacing: 12) {
-            // Thumbnail or source icon
-            if let thumbnailURL = item.thumbnailURL, let url = URL(string: thumbnailURL) {
-                AsyncImage(url: url) { image in
-                    image
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                } placeholder: {
-                    sourceIcon
-                }
-                .frame(width: 56, height: 56)
-                .clipShape(RoundedRectangle(cornerRadius: 8))
-            } else {
-                sourceIcon
-            }
+        HStack(alignment: .top, spacing: 12) {
+            sourceIcon
 
             VStack(alignment: .leading, spacing: 4) {
-                // Title
                 Text(item.title.isEmpty ? "Untitled" : item.title)
                     .font(.headline)
-                    .lineLimit(1)
+                    .foregroundStyle(.primary)
+                    .lineLimit(2)
 
-                // Content preview
-                if !item.content.isEmpty {
-                    Text(item.content)
+                if !previewText.isEmpty {
+                    Text(previewText)
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .lineLimit(2)
                 }
 
-                // Metadata row
-                HStack(spacing: 8) {
+                HStack(spacing: 4) {
                     Text(item.sourceType.displayName)
                         .font(.caption)
-                        .fontWeight(.medium)
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(Color(hex: item.sourceType.accentColorHex))
-                        .clipShape(Capsule())
+                        .foregroundStyle(.tertiary)
+
+                    Text("\u{00B7}")
+                        .foregroundStyle(.quaternary)
 
                     Text(item.ingestedAt.formatted(.relative(presentation: .named)))
                         .font(.caption)
                         .foregroundStyle(.tertiary)
 
-                    if item.isEnriched {
-                        Image(systemName: "sparkles")
-                            .font(.caption)
-                            .foregroundStyle(.yellow)
-                    } else if item.processingStatus == "processing" {
-                        ProgressView()
-                            .controlSize(.mini)
-                    } else if item.processingStatus == "failed" {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .font(.caption)
-                            .foregroundStyle(.red)
-                    }
+                    Spacer(minLength: 0)
+
+                    statusIndicator
                 }
             }
         }
         .padding(.vertical, 4)
+        .opacity(item.processingStatus == "processing" ? 0.7 : 1)
+        .contentShape(Rectangle())
     }
+
+    // MARK: - Source Icon (40x40 with enriched dot badge)
 
     private var sourceIcon: some View {
-        Image(systemName: item.sourceType.iconName)
-            .font(.title2)
-            .foregroundStyle(Color(hex: item.sourceType.accentColorHex))
-            .frame(width: 56, height: 56)
-            .background(Color(hex: item.sourceType.accentColorHex).opacity(0.1))
-            .clipShape(RoundedRectangle(cornerRadius: 8))
+        RoundedRectangle(cornerRadius: 8, style: .continuous)
+            .fill(item.sourceType.accentColor.opacity(0.12))
+            .frame(width: 40, height: 40)
+            .overlay {
+                Image(systemName: item.sourceType.iconName)
+                    .font(.body)
+                    .foregroundStyle(item.sourceType.accentColor)
+            }
+            .overlay(alignment: .topTrailing) {
+                if item.isEnriched {
+                    Circle()
+                        .fill(item.sourceType.accentColor)
+                        .frame(width: 8, height: 8)
+                        .offset(x: 3, y: -3)
+                }
+            }
     }
-}
 
-// MARK: - Color Hex Extension
+    // MARK: - Status (only show for states needing attention)
 
-extension Color {
-    init(hex: String) {
-        let hex = hex.trimmingCharacters(in: CharacterSet(charactersIn: "#"))
-        let scanner = Scanner(string: hex)
-        var rgbValue: UInt64 = 0
-        scanner.scanHexInt64(&rgbValue)
-
-        let r = Double((rgbValue & 0xFF0000) >> 16) / 255.0
-        let g = Double((rgbValue & 0x00FF00) >> 8) / 255.0
-        let b = Double(rgbValue & 0x0000FF) / 255.0
-
-        self.init(red: r, green: g, blue: b)
+    @ViewBuilder
+    private var statusIndicator: some View {
+        if item.processingStatus == "processing" {
+            ProgressView()
+                .controlSize(.mini)
+        } else if item.processingStatus == "failed" {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.caption2)
+                .foregroundStyle(.red)
+        }
     }
 }
 

@@ -8,6 +8,13 @@ struct AddItemView: View {
     @State private var selectedSource: SourceType = .text
     @State private var tags = ""
     @State private var showingConfirmation = false
+    @FocusState private var focusedField: Field?
+
+    private enum Field: Hashable { case url, content, tags }
+
+    private var canSave: Bool {
+        !inputText.isEmpty || !inputURL.isEmpty
+    }
 
     var body: some View {
         NavigationStack {
@@ -21,11 +28,12 @@ struct AddItemView: View {
                     }
                 }
 
-                Section("Link (optional)") {
+                Section("Link") {
                     TextField("https://...", text: $inputURL)
                         .keyboardType(.URL)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
+                        .focused($focusedField, equals: .url)
                         .onChange(of: inputURL) { _, newValue in
                             if !newValue.isEmpty {
                                 let detected = SourceType.detect(from: newValue)
@@ -39,23 +47,29 @@ struct AddItemView: View {
                 Section("Content") {
                     TextEditor(text: $inputText)
                         .frame(minHeight: 120)
+                        .focused($focusedField, equals: .content)
                 }
 
                 Section("Tags (comma separated)") {
                     TextField("ai, swift, design...", text: $tags)
                         .textInputAutocapitalization(.never)
-                }
-
-                Section {
-                    Button(action: saveItem) {
-                        Label("Save Knowledge", systemImage: "square.and.arrow.down")
-                            .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(inputText.isEmpty && inputURL.isEmpty)
+                        .focused($focusedField, equals: .tags)
                 }
             }
             .navigationTitle("Add Knowledge")
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Save", action: saveItem)
+                        .fontWeight(.semibold)
+                        .disabled(!canSave)
+                }
+                ToolbarItem(placement: .keyboard) {
+                    HStack {
+                        Spacer()
+                        Button("Done") { focusedField = nil }
+                    }
+                }
+            }
             .alert("Saved", isPresented: $showingConfirmation) {
                 Button("OK") { resetForm() }
             } message: {
@@ -63,6 +77,8 @@ struct AddItemView: View {
             }
         }
     }
+
+    // MARK: - Actions
 
     private func saveItem() {
         let parsedTags = tags
@@ -80,7 +96,6 @@ struct AddItemView: View {
             tags: parsedTags
         )
 
-        // If there's a URL, mark as pending for backend enrichment
         if !inputURL.isEmpty {
             item.processingStatus = "pending"
         } else {
@@ -90,11 +105,11 @@ struct AddItemView: View {
 
         modelContext.insert(item)
 
-        // Auto-enrich if there's a URL
         if !inputURL.isEmpty {
             EnrichmentService.shared.enrich(item, in: modelContext)
         }
 
+        focusedField = nil
         showingConfirmation = true
     }
 

@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 
 /// Supported knowledge source platforms
 enum SourceType: String, Codable, CaseIterable, Identifiable {
@@ -50,6 +51,27 @@ enum SourceType: String, Codable, CaseIterable, Identifiable {
         case .transcript: return "#FF6B35"
         case .text: return "#8E8E93"
         }
+    }
+
+    /// Pre-computed Color from hex — avoids Scanner allocation per render
+    private static let colorCache: [SourceType: Color] = {
+        var cache: [SourceType: Color] = [:]
+        for source in SourceType.allCases {
+            let hex = source.accentColorHex.trimmingCharacters(in: CharacterSet(charactersIn: "#"))
+            let scanner = Scanner(string: hex)
+            var rgbValue: UInt64 = 0
+            scanner.scanHexInt64(&rgbValue)
+            cache[source] = Color(
+                red: Double((rgbValue & 0xFF0000) >> 16) / 255.0,
+                green: Double((rgbValue & 0x00FF00) >> 8) / 255.0,
+                blue: Double(rgbValue & 0x0000FF) / 255.0
+            )
+        }
+        return cache
+    }()
+
+    var accentColor: Color {
+        Self.colorCache[self]!
     }
 
     /// Detect source type from a URL string

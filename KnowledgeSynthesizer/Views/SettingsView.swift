@@ -1,59 +1,68 @@
 import SwiftUI
 
 struct SettingsView: View {
-    @State private var backendStatus: String = "Checking..."
+    @State private var backendStatus = "Checking..."
     @State private var isCheckingBackend = false
 
     var body: some View {
         NavigationStack {
             List {
                 Section("Active Platforms") {
-                    HStack {
+                    Label {
+                        HStack {
+                            Text("Instagram")
+                            Spacer()
+                            Text("Active")
+                                .font(.caption)
+                                .foregroundStyle(.green)
+                        }
+                    } icon: {
                         Image(systemName: "camera.circle.fill")
-                            .foregroundStyle(Color(hex: "#E1306C"))
-                        Text("Instagram")
-                        Spacer()
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundStyle(.green)
-                        Text("Active")
-                            .font(.caption)
-                            .foregroundStyle(.green)
+                            .foregroundStyle(SourceType.instagram.accentColor)
                     }
                 }
 
                 Section("Coming Soon") {
                     ForEach([SourceType.youtube, .github, .website, .twitter, .linkedin], id: \.self) { source in
-                        HStack {
+                        Label {
+                            HStack {
+                                Text(source.displayName)
+                                Spacer()
+                                Text("Soon")
+                                    .font(.caption)
+                                    .foregroundStyle(.tertiary)
+                            }
+                        } icon: {
                             Image(systemName: source.iconName)
-                                .foregroundStyle(Color(hex: source.accentColorHex))
-                            Text(source.displayName)
-                            Spacer()
-                            Text("Soon")
-                                .font(.caption)
-                                .foregroundStyle(.tertiary)
+                                .foregroundStyle(source.accentColor)
                         }
                     }
                 }
 
                 Section("Backend") {
-                    HStack {
-                        Text("Status")
-                        Spacer()
+                    LabeledContent("Status") {
                         if isCheckingBackend {
                             ProgressView()
+                                .controlSize(.small)
                         } else {
-                            Text(backendStatus)
-                                .font(.caption)
-                                .foregroundStyle(backendStatus == "Connected" ? .green : .red)
+                            HStack(spacing: 4) {
+                                Circle()
+                                    .fill(backendStatus == "Connected" ? .green : .red)
+                                    .frame(width: 8, height: 8)
+                                Text(backendStatus)
+                                    .foregroundStyle(backendStatus == "Connected" ? .green : .red)
+                            }
+                            .font(.caption.weight(.medium))
                         }
                     }
-                    LabeledContent("URL", value: "Railway (production)")
+                    LabeledContent("Environment", value: "Production")
                 }
 
                 Section("About") {
                     LabeledContent("Version", value: "0.1.0")
                 }
             }
+            .listStyle(.insetGrouped)
             .navigationTitle("Settings")
             .task {
                 await checkBackend()

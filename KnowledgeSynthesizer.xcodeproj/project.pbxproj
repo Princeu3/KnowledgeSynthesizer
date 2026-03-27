@@ -16,6 +16,7 @@
 		7B558B2FBD53BF8D7E2BA56C /* KnowledgeSynthesizerApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6AE9480D227B440AA73F2E0 /* KnowledgeSynthesizerApp.swift */; };
 		8D07D860A49913E585913AAC /* EnrichmentService.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5002E477BAA732A3282FF75 /* EnrichmentService.swift */; };
 		9E76D3DE6C57862C02465EA2 /* Source.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71C06C6BD1863B5F62FB317A /* Source.swift */; };
+		A4AD2C7C177AEEA4E6E4E236 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 079E85E99793D43935AD5A0B /* Theme.swift */; };
 		AB8700ED4BF4EB23CC83B046 /* SearchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A44E5866B80FAC4DFE50E75B /* SearchView.swift */; };
 		C3FA0F7590C9F121766243D9 /* ItemDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B7BEB62228F9D10AA34CE87 /* ItemDetailView.swift */; };
 		C44F310F4CE0B9A1A5F26657 /* OCRService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 394D71E8C4A739E61C351D8D /* OCRService.swift */; };
@@ -52,6 +53,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		079E85E99793D43935AD5A0B /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
 		0E12AD0EAFF89CC16949BBD1 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		10BB05F1BC180E0B5F36BED4 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		17AAEA5DBAD258EBCD75D4E1 /* KnowledgeSynthesizer.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = KnowledgeSynthesizer.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -124,6 +126,7 @@
 				8B7BEB62228F9D10AA34CE87 /* ItemDetailView.swift */,
 				A44E5866B80FAC4DFE50E75B /* SearchView.swift */,
 				5C714362989A95505C432383 /* SettingsView.swift */,
+				079E85E99793D43935AD5A0B /* Theme.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -283,6 +286,7 @@
 				AB8700ED4BF4EB23CC83B046 /* SearchView.swift in Sources */,
 				E29A81EB9B7FDA934D085DCB /* SettingsView.swift in Sources */,
 				9E76D3DE6C57862C02465EA2 /* Source.swift in Sources */,
+				A4AD2C7C177AEEA4E6E4E236 /* Theme.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
